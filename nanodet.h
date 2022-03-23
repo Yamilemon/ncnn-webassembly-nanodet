@@ -18,11 +18,11 @@
 #include <net.h>
 #include <simpleocv.h>
 
-struct Object
+struct keypoint
 {
-    cv::Rect_<float> rect;
-    int label;
-    float prob;
+    float x;
+    float y;
+    float score;
 };
 
 class NanoDet
@@ -32,15 +32,24 @@ public:
 
     int load(const char* modeltype, int target_size, const float* mean_vals, const float* norm_vals, bool use_gpu = false);
 
-    int detect(const cv::Mat& rgba, std::vector<Object>& objects, float prob_threshold = 0.4f, float nms_threshold = 0.5f);
+    // int load(AAssetManager* mgr, const char* modeltype, int target_size, const float* mean_vals, const float* norm_vals, bool use_gpu = false);
 
-    int draw(cv::Mat& rgba, const std::vector<Object>& objects);
+    int detect(const cv::Mat& rgb);
+
+    int draw(cv::Mat& rgb, std::vector<keypoint> points);
+
+    void detect_point(cv::Mat& rgb, std::vector<keypoint> &points);
 
 private:
-    ncnn::Net nanodet;
+    void detect_pose(cv::Mat &rgb, std::vector<keypoint> &points);
+    ncnn::Net poseNet;
+    int feature_size;
+    float kpt_scale;
     int target_size;
     float mean_vals[3];
     float norm_vals[3];
+    std::vector<std::vector<float>> dist_y, dist_x;
+
     ncnn::UnlockedPoolAllocator blob_pool_allocator;
     ncnn::PoolAllocator workspace_pool_allocator;
 };

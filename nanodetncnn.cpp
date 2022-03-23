@@ -16,6 +16,8 @@
 #include <simpleocv.h>
 #include "nanodet.h"
 
+using namespace std;
+
 static int draw_fps(cv::Mat& rgba)
 {
     // resolve moving average
@@ -71,23 +73,75 @@ static int draw_fps(cv::Mat& rgba)
 }
 
 static NanoDet* g_nanodet = 0;
-
+char *model = "lightning";
 static void on_image_render(cv::Mat& rgba)
 {
     if (!g_nanodet)
     {
-        g_nanodet = new NanoDet;
+        int modelid = 0;// 默认使用lightning
+        int cpugpu = 1;// 默认使用cpu
+                    // 不是lightning的话就使用thunder
+        if (strcmp(model, "lightning") != 0) modelid = 1;
+
+        if (modelid < 0 || modelid > 6 || cpugpu < 0 || cpugpu > 1)
+        {
+            return;
+        }
+
+        const char* modeltypes[] =
+        {
+            "lightning",
+            "thunder",
+        };
+
+        const int target_sizes[] =
+        {
+            192,
+            256,
+        };
+
+        const float mean_vals[][3] =
+        {
+            { 127.5f, 127.5f,  127.5f },
+            { 127.5f, 127.5f,  127.5f },
+        };
+
+        const float norm_vals[][3] =
+        {
+            { 1 / 127.5f, 1 / 127.5f, 1 / 127.5f },
+            { 1 / 127.5f, 1 / 127.5f, 1 / 127.5f },
+        };
+
+        const char* modeltype = modeltypes[(int)modelid];
+        int target_size = target_sizes[(int)modelid];
+        bool use_gpu = (int)cpugpu == 1;
+
+        if (!g_nanodet) g_nanodet = new NanoDet;
+        g_nanodet->load(modeltype, target_size, mean_vals[(int)modelid], norm_vals[(int)modelid], use_gpu);
+
+        /*g_nanodet = new NanoDet;
 
         static const float mean_vals[3] = {103.53f, 116.28f, 123.675f};
         static const float norm_vals[3] = {1.f / 57.375f, 1.f / 57.12f, 1.f / 58.395f};
 
-        g_nanodet->load("m", 320, mean_vals, norm_vals);
+        g_nanodet->load("m", 320, mean_vals, norm_vals);*/
     }
 
-    std::vector<Object> objects;
-    g_nanodet->detect(rgba, objects);
+    std::vector<keypoint> points;
+	g_nanodet->detect_point(rgba, points);
+    g_nanodet->draw(rgba, points);
 
-    g_nanodet->draw(rgba, objects);
+    // 回调js
+    string s = "'[";
+	for (int i = 0; i < points.size(); i++) {
+		if (i < points.size() - 1) s = s + "{\"x\":" + to_string(w - points[i].x) + ",\"y\":" + to_string(points[i].y) + ",\"score\":" + to_string(points[i].score * 100) + "},";
+		else if (i == points.size() - 1) s = s + "{\"x\":" + to_string(w - points[i].x) + ",\"y\":" + to_string(points[i].y) + ",\"score\":" + to_string(points[i].score * 100) + "}]'";
+	}
+	string pose = "'{}'";
+	string fps = "'30'";
+	string isMovenet = "'true'";
+	string run_js = "if(window.nano_z.onFrame) { window.nano_z.onFrame(" + s + ", "+ pose +", "+ fps +","+ isMovenet +"); }";
+    emscripten_run_script(run_js.c_str());
 
     draw_fps(rgba);
 }
@@ -167,6 +221,10 @@ extern "C" {
 void nanodet_ncnn(unsigned char* rgba_data, int w, int h)
 {
     cv::Mat rgba(h, w, CV_8UC4, (void*)rgba_data);
+
+    // 镜像翻转
+    //cv::Mat v_frame;
+	//cv::flip(rgba, v_frame, 1);
 
     on_image_render(rgba);
 }
